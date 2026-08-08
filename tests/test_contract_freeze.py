@@ -19,6 +19,14 @@ FROZEN_PORT = 8101
 FROZEN_SCHEMA = 'crypto.v1'
 
 
+def _shared_runtime_available():
+    try:
+        envelope(items=[], data_status="empty")
+    except (ImportError, ModuleNotFoundError):
+        return False
+    return True
+
+
 class ContractFreezeTests(unittest.TestCase):
     def test_schema_version_frozen(self):
         self.assertEqual(config.SCHEMA_VERSION, FROZEN_SCHEMA)
@@ -32,6 +40,7 @@ class ContractFreezeTests(unittest.TestCase):
         self.assertFalse(config.ALLOW_EXTERNAL_WRITES)
         self.assertFalse(config.ALLOW_REFRESH)
 
+    @unittest.skipUnless(_shared_runtime_available(), "shared data_lake adapter not found")
     def test_envelope_required_keys(self):
         body = envelope(items=[], data_status="empty")
         for key in ENVELOPE_KEYS:

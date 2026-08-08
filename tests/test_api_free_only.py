@@ -105,7 +105,10 @@ def _lake_deps_available() -> bool:
         import pyarrow  # noqa: F401
     except ImportError:
         return False
-    return lake.find_solo_empire_root() is not None
+    try:
+        return lake.find_solo_empire_root() is not None
+    except (ImportError, ModuleNotFoundError):
+        return False
 
 
 @unittest.skipUnless(_lake_deps_available(), "pyarrow/duckdb + monorepo data_lake required")
@@ -274,6 +277,7 @@ class StoreLakeTests(unittest.TestCase):
             self.assertGreaterEqual(len(payload["items"]), 1)
 
 
+@unittest.skipUnless(_lake_deps_available(), "pyarrow/duckdb + monorepo data_lake required")
 class CsvProjectionOnlyTests(unittest.TestCase):
     def test_csv_projection_helper_still_works_for_cli(self):
         with tempfile.TemporaryDirectory() as tmp:
