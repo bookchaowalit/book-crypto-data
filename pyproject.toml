@@ -1,0 +1,13 @@
+[project]
+name = "book-crypto-data"
+version = "0.1.0"
+description = "Crypto market data ingestion and CLI from CoinGecko."
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.27"]
+
+[project.scripts]
+book-crypto-data = "book_crypto.ingest:main"
+book-crypto-data-api = "book_crypto.api:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
