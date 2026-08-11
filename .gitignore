@@ -6,3 +6,6 @@ __pycache__/
 .pytest_cache/
 *.db
 .mypy_cache/
+
+*.egg-info/
+src/*.egg-info/
