@@ -2,6 +2,8 @@
 
 Crypto market data product (CoinGecko free public API).
 
+Collection cron: `bash setup_cron.sh install` runs bounded CoinGecko capture every 4 hours into `data/exported/`. Lake ingest remains a separate command.
+
 Migration status: **lake-first pilot (end-to-end)**. Live ingest writes exact
 API bytes to Object Storage landing + Bronze Parquet before any local CSV
 projection. The read-only HTTP API queries Bronze via DuckDB and does **not**
