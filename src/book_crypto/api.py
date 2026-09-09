@@ -28,7 +28,7 @@ def _allowed_cors_origin(origin: str | None) -> str | None:
     if not origin:
         return None
     origin = origin.strip()
-    if _LOCAL_ORIGIN_RE.match(origin):
+    if _LOCAL_ORIGIN_RE.match(origin) or origin in config.CORS_ALLOWED_ORIGINS:
         return origin
     return None
 

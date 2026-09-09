@@ -241,6 +241,26 @@ def _read_silver_dataset_rows(
     return rows, "silver_s3_parquet" if lake.is_remote_lake_uri(data_lake_uri) else "silver_parquet"
 
 
+def _prefer_full_price_captures(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A history export must not replace a full snapshot at the same instant.
+
+    Both exports belong to crypto_prices, but the compact historical export
+    omits volume_24h. Keep historical observations at other instants intact.
+    """
+    def key(row: dict[str, Any]) -> tuple[str, str, str]:
+        payload = lake.parse_payload_json(row)
+        stamp = str(row.get("event_time") or "")
+        try:
+            parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            stamp = parsed.replace(tzinfo=parsed.tzinfo or timezone.utc).astimezone(timezone.utc).isoformat()
+        except ValueError:
+            pass
+        return str(payload.get("coin_id", "")), str(payload.get("currency", "")), stamp
+
+    full_keys = {key(row) for row in rows if "volume_24h" in lake.parse_payload_json(row)}
+    return [row for row in rows if "volume_24h" in lake.parse_payload_json(row) or key(row) not in full_keys]
+
+
 def _read_price_projection(
     *,
     data_lake_uri: str,
@@ -260,7 +280,7 @@ def _read_price_projection(
     else:
         bronze_items = [
             bronze_price_item(row, history=False)
-            for row in lake.select_latest_bronze_rows(bronze_rows)
+            for row in lake.select_latest_bronze_rows(_prefer_full_price_captures(bronze_rows))
         ]
     if mode == "bronze":
         return bronze_items, bronze_source_kind, fallback_reason, None, mode

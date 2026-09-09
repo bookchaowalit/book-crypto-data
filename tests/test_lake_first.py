@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from book_crypto import config, lake
+from book_crypto.store import _prefer_full_price_captures
 from book_crypto.ingest import (
     project_prices_csv,
     run_live_ingest,
@@ -40,6 +41,17 @@ SAMPLE_API = {
         "last_updated_at": 1720000000,
     },
 }
+
+
+class CaptureOverlapTests(unittest.TestCase):
+    def test_history_does_not_erase_snapshot_volume_at_same_instant(self):
+        def row(stamp, **fields):
+            return {"event_time": stamp, "payload_json": json.dumps({"coin_id": "bitcoin", "currency": "usd", **fields})}
+        full = row("2026-09-07T00:00:00Z", volume_24h="100", price="1")
+        compact = row("2026-09-07T07:00:00+07:00", price="1")
+        older = row("2026-09-06T00:00:00Z", price="0.9")
+        newer = row("2026-09-08T00:00:00Z", price="1.1")
+        self.assertEqual(_prefer_full_price_captures([full, compact, older, newer]), [full, older, newer])
 
 
 def _monorepo_lake_root(start=None):
