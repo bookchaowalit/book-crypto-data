@@ -293,7 +293,7 @@ def create_server(host: Optional[str] = None, port: Optional[int] = None) -> Thr
 def main(argv: Optional[list[str]] = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description=f"Local read-only API for book-crypto-data")
+    parser = argparse.ArgumentParser(description="Local read-only API for book-crypto-data")
     parser.add_argument("--host", default=config.API_HOST, help="Bind host (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=config.API_PORT, help="Bind port")
     args = parser.parse_args(argv)

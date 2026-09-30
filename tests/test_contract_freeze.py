@@ -6,7 +6,6 @@ Breaking changes require a new schema_version (e.g. crypto.v2).
 """
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
