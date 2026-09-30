@@ -11,7 +11,7 @@ dependencies = ["httpx>=0.27"]
 lake = [
   "duckdb>=1.1.0,<2.0.0",
   "pyarrow>=14.0.0,<24.0.0",
-  "solo-empire-data-lake[lake] @ https://github.com/bookchaowalit/solo-empire-data-lake/archive/68fb5a958d88eca4b8b27066a10b06b3e8a69e10.tar.gz",
+  "solo-empire-data-lake[lake] @ https://github.com/bookchaowalit/solo-empire-data-lake/archive/4c24c667e1ebafee163705b1c8b9b9f8c83e3185.tar.gz",
 ]
 
 [project.scripts]
