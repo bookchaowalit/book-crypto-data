@@ -229,14 +229,18 @@ trigger a paid fallback.
 ## Tests
 
 ```bash
-# Standalone (what CI runs): lake integration tests skip without the adapter
-python -m pip install -e . pytest ruff
+# What CI runs: the [lake] extra installs the pinned solo-empire-data-lake
+# runtime (plus pyarrow/duckdb), so Bronze/Silver lake tests run standalone
+python -m pip install -e ".[lake]" pytest ruff
 ruff check .
 python -m pytest -q -rs
 
-# Full lake coverage: point at a Solo Empire checkout that has
-# infra/scripts/data_lake (sibling clones work; walking parents is the default)
-python -m pip install pyarrow duckdb
+# Contract/policy only: without the extra, lake tests skip with a reason
+python -m pip install -e . pytest
+python -m pytest -q -rs
+
+# Inside Solo Empire: SOLO_EMPIRE_ROOT (or walking parents) makes the parent
+# checkout's infra/scripts/data_lake take precedence over the installed runtime
 SOLO_EMPIRE_ROOT=/path/to/solo-empire python -m pytest -q
 ```
 
