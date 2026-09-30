@@ -25,6 +25,9 @@ LAKE_SOURCE = REPO_NAME
 LAKE_DOMAIN = "market"
 LAKE_DATASET_PRICES = "crypto_prices"
 LAKE_DATASET_TRENDING = "crypto_trending"
+# Closed OHLCV bars and futures funding rates (Binance public market data).
+LAKE_DATASET_OHLCV = "crypto_ohlcv"
+LAKE_DATASET_FUNDING = "crypto_funding"
 LAKE_BRONZE_SCHEMA_VERSION = "1"
 LAKE_PRIVACY_CLASS = "public"
 LAKE_RETENTION_CLASS = "operational"

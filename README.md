@@ -23,6 +23,8 @@ Shared procedure (do not invent a competing path; paths from Solo Empire monorep
 | `domain` | `market` |
 | `dataset` (prices) | `crypto_prices` |
 | `dataset` (trending) | `crypto_trending` |
+| `dataset` (closed bars) | `crypto_ohlcv` — Binance public klines, id `venue:SYMBOL:interval:open_time_ms` |
+| `dataset` (funding) | `crypto_funding` — Binance futures public funding rates |
 | Bronze `schema_version` | `1` |
 | Product envelope `schema_version` | `crypto.v1` |
 | `privacy_class` | `public` |
@@ -206,6 +208,20 @@ Allowed default: CoinGecko keyless/public low-volume REST with cache and backoff
 | `coingecko_public` | `free` | CoinGecko keyless public REST; rate-limited |
 | `coingecko_pro` | `blocked` | CoinGecko Pro requires paid plan |
 | `coingecko_webhooks` | `blocked` | Webhooks/high-frequency polling not free-default |
+| `binance_public_market_data` | `free` | Keyless public klines/fundingRate; closed bars only |
+| `binance_trading_api` | `blocked` | Signed account/order endpoints are never used |
+
+### OHLCV and funding capture
+
+```bash
+PYTHONPATH=src python -m book_crypto.ohlcv --symbols BTCUSDT,ETHUSDT --interval 1h --days 730
+```
+
+Writes one landing object per upstream page (exact bytes) plus Bronze
+`crypto_ohlcv` / `crypto_funding`. Runs are incremental: each series resumes
+after the newest bar already in Bronze, and the still-forming bar is never
+written. The monorepo `task trading:daily` runs capture -> Silver -> paper
+signal.
 
 Missing paid credentials produce an explicit skipped/blocked status; they never
 trigger a paid fallback.

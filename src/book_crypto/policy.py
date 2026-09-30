@@ -11,6 +11,11 @@ PROVIDERS: dict[str, dict[str, str]] = {
     'coingecko_public': {'status': 'free', 'reason': 'CoinGecko keyless public REST; rate-limited'},
     'coingecko_pro': {'status': 'blocked', 'reason': 'CoinGecko Pro requires paid plan'},
     'coingecko_webhooks': {'status': 'blocked', 'reason': 'Webhooks/high-frequency polling not free-default'},
+    'binance_public_market_data': {
+        'status': 'free',
+        'reason': 'Binance keyless public klines/fundingRate market-data endpoints; read-only, rate-limited',
+    },
+    'binance_trading_api': {'status': 'blocked', 'reason': 'Signed account/order endpoints are never used by this data product'},
 }
 
 

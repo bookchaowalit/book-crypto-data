@@ -71,7 +71,12 @@ def _contract():
         data_lake_uri=config.DATA_LAKE_URI,
         solo_empire_root=config.SOLO_EMPIRE_ROOT,
         lineage_filename=config.LINEAGE_FILE,
-        datasets=(config.LAKE_DATASET_PRICES, config.LAKE_DATASET_TRENDING),
+        datasets=(
+            config.LAKE_DATASET_PRICES,
+            config.LAKE_DATASET_TRENDING,
+            config.LAKE_DATASET_OHLCV,
+            config.LAKE_DATASET_FUNDING,
+        ),
     )
 
 
@@ -176,6 +181,7 @@ def ingest_to_lake(
     metadata: Optional[dict[str, Any]] = None,
     content_type: str = "application/json",
     input_format: str = "json",
+    provider: str = "coingecko_public",
 ) -> dict[str, Any]:
     _sync_exc()
     return _pa_mod().ingest_to_lake(
@@ -187,7 +193,7 @@ def ingest_to_lake(
         metadata=metadata,
         content_type=content_type,
         input_format=input_format,
-        provider="coingecko_public",
+        provider=provider,
     )
 
 
