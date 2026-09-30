@@ -4,12 +4,13 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from book_crypto import ohlcv, quality, store
+from book_crypto import config, ohlcv, quality, store
 
 HOUR = 3_600_000
 T0 = 1_700_000_000_000 - (1_700_000_000_000 % HOUR)
@@ -81,6 +82,23 @@ class CsvAndIdEdgeCases(unittest.TestCase):
             self.assertEqual(store.get_record("x%3A"), None)
             self.assertEqual(store.get_record("xA"), {"record_id": "xA"})
 
+
+class EnvBoolTests(unittest.TestCase):
+    def _parse(self, raw, default):
+        with mock.patch.dict(os.environ, {"EDGE_CASE_FLAG": raw}):
+            return config.env_bool("EDGE_CASE_FLAG", default)
+
+    def test_blank_or_unknown_keeps_the_safe_default(self) -> None:
+        for raw in ("", "  ", "ture", "enabled?"):
+            with self.subTest(raw=raw):
+                self.assertIs(self._parse(raw, True), True)
+                self.assertIs(self._parse(raw, False), False)
+
+    def test_explicit_values(self) -> None:
+        for raw in ("1", "TRUE", " yes ", "on"):
+            self.assertIs(self._parse(raw, False), True)
+        for raw in ("0", "False", " no", "OFF"):
+            self.assertIs(self._parse(raw, True), False)
 
 if __name__ == "__main__":
     unittest.main()
