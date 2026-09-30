@@ -139,7 +139,7 @@ Environment:
 | Variable | Purpose |
 |---|---|
 | `SOLO_EMPIRE_DATA_LAKE_URI` / `DATA_LAKE_URI` | Lake root (`file://...` or path; default monorepo `data/lake`) |
-| `SOLO_EMPIRE_ROOT` | Monorepo root if not discovered by walking parents |
+| `SOLO_EMPIRE_ROOT` | Monorepo root if not discovered by walking parents; also used to locate the shared `data_lake` adapter |
 | `DATA_DIR` | Local CSV projection directory (default `./data`) |
 
 On live ingest, lake write failure exits non-zero and **does not** update CSV.
@@ -229,11 +229,15 @@ trigger a paid fallback.
 ## Tests
 
 ```bash
-# From this package (with src on PYTHONPATH / editable install)
-python -m unittest discover -s tests -v
+# Standalone (what CI runs): lake integration tests skip without the adapter
+python -m pip install -e . pytest ruff
+ruff check .
+python -m pytest -q -rs
 
-# Prefer the monorepo venv when verifying real lake writes:
-# /path/to/solo-empire/.venv/bin/python -m unittest discover -s tests -v
+# Full lake coverage: point at a Solo Empire checkout that has
+# infra/scripts/data_lake (sibling clones work; walking parents is the default)
+python -m pip install pyarrow duckdb
+SOLO_EMPIRE_ROOT=/path/to/solo-empire python -m pytest -q
 ```
 
 Coverage includes offline fixtures, mocked upstream HTTP, API contract against
