@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -486,11 +487,13 @@ def get_record(
     *,
     data_lake_uri: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
-    record_id = unquote(record_id)
+    # api.py already percent-decodes the path; try the id as given first so
+    # ids containing "%" are not decoded twice into a different id.
     payload = load_records(data_dir, data_lake_uri=data_lake_uri)
-    for item in payload["items"]:
-        if item.get("record_id") == record_id:
-            return item
+    for candidate in dict.fromkeys((record_id, unquote(record_id))):
+        for item in payload["items"]:
+            if item.get("record_id") == candidate:
+                return item
     return None
 
 
@@ -539,10 +542,12 @@ def _read_csv(path: Path) -> tuple[list[dict[str, str]], Optional[str]]:
     if not path.exists():
         return [], None
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8-sig")
         if not text.strip():
             return [], None
-        reader = csv.DictReader(text.splitlines())
+        # Not text.splitlines(): it also splits on U+2028/U+2029/NEL, which
+        # csv.writer leaves unquoted, so one cell became two rows.
+        reader = csv.DictReader(io.StringIO(text, newline=""))
         rows = [dict(row) for row in reader]
         return rows, None
     except Exception as exc:  # noqa: BLE001

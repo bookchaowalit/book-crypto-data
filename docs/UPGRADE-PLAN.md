@@ -64,3 +64,20 @@ Score: 8/10 -> 8.5/10 — rows with NaN/inf/negative/duplicate values are now re
 - README "Tests" section documents the standalone and full-lake commands.
 - Verified: clean venv with `pip install -e . pytest` (CI shape) and a full run with
   `SOLO_EMPIRE_ROOT=<parent>` + pyarrow/duckdb (all lake tests execute and pass).
+
+## Done in this pass (pass 4: edge cases)
+
+- `quality.finite_number` raised `OverflowError` for a JSON integer beyond
+  float range (`1` followed by 400 zeros); it now returns `None`.
+- New `quality.epoch_ms`: kline open/close times, trade counts and funding
+  times went through bare `int()`, so an `Infinity` value crashed the capture
+  with an uncaught `OverflowError`, `2.5`/`true` trade counts were silently
+  truncated, and out-of-range times crashed `iso_utc`. Such bars/rows are now
+  dropped; float-encoded integral times (`"1700000000000.0"`) are accepted.
+- `store._read_csv` used `text.splitlines()`, which split one unquoted cell
+  holding U+2028/NEL into two rows; it now parses with `newline=""` and
+  strips a UTF-8 BOM from the header.
+- `store.get_record` percent-decoded an id the API had already decoded, so
+  ids containing `%` were unreachable; the id is tried as given first.
+- Verified: `tests/test_edge_cases.py` (all 7 fail on the old code); full suite
+  75 passed / 1 skipped; ruff 0.15.8 + 0.16.9.

@@ -30,7 +30,7 @@ from typing import Any, Callable, Optional
 from . import config
 from . import lake as _lake
 from .policy import require_provider
-from .quality import finite_number, non_negative_number
+from .quality import epoch_ms, finite_number, non_negative_number
 
 PROVIDER = "binance_public_market_data"
 MARKETS = {
@@ -102,9 +102,10 @@ def valid_kline(row: list[Any]) -> bool:
     Rejects NaN/inf/negative prices or volumes, ``high < max(open, close, low)``,
     ``low > min(open, close)``, a non-integer trade count, and close <= open time.
     """
-    try:
-        open_ms, close_ms, trades = int(row[0]), int(row[6]), int(row[8])
-    except (IndexError, TypeError, ValueError):
+    if not isinstance(row, (list, tuple)) or len(row) < 9:
+        return False
+    open_ms, close_ms, trades = epoch_ms(row[0]), epoch_ms(row[6]), epoch_ms(row[8])
+    if open_ms is None or close_ms is None or trades is None:
         return False
     prices = [non_negative_number(row[i]) for i in (1, 2, 3, 4)]
     volumes = [non_negative_number(row[i]) for i in (5, 7)]
@@ -131,7 +132,7 @@ def kline_records(
     for row in payload:
         if not valid_kline(row):
             continue
-        open_ms, close_ms = int(row[0]), int(row[6])
+        open_ms, close_ms = epoch_ms(row[0]), epoch_ms(row[6])  # non-None: valid_kline
         if close_ms >= now_ms:
             continue  # bar still forming
         if open_ms in seen:
@@ -151,7 +152,7 @@ def kline_records(
                 "close": str(row[4]),
                 "volume": str(row[5]),
                 "quote_volume": str(row[7]),
-                "trades": int(row[8]),
+                "trades": epoch_ms(row[8]),
                 "event_time": iso_utc(open_ms),
             }
         )
@@ -163,9 +164,8 @@ def funding_records(payload: list[dict[str, Any]], *, symbol: str) -> list[dict[
     records = []
     seen: set[int] = set()
     for row in payload:
-        try:
-            t = int(row["fundingTime"])
-        except (KeyError, TypeError, ValueError):
+        t = epoch_ms(row.get("fundingTime")) if isinstance(row, dict) else None
+        if t is None:
             continue
         if t in seen or finite_number(row.get("fundingRate")) is None:
             continue

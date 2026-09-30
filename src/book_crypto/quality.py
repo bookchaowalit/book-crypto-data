@@ -20,7 +20,10 @@ def finite_number(value: Any) -> Optional[float]:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError:  # an int beyond float range (JSON allows 1e400 digits)
+            return None
     elif isinstance(value, str):
         text = value.strip()
         if not text:
@@ -32,6 +35,28 @@ def finite_number(value: Any) -> Optional[float]:
     else:
         return None
     return number if math.isfinite(number) else None
+
+
+# 9999-12-31T23:59:59Z; datetime cannot represent anything later.
+MAX_EPOCH_MS = 253_402_300_799_999
+
+
+def epoch_ms(value: Any) -> Optional[int]:
+    """Return an integral epoch-millisecond timestamp in ``[0, MAX_EPOCH_MS]``.
+
+    ``int()`` alone raised ``OverflowError`` on ``Infinity`` and truncated
+    fractional or boolean values; out-of-range values crashed ``datetime``.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        number = value
+    else:
+        as_float = finite_number(value)
+        if as_float is None or not as_float.is_integer():
+            return None
+        number = int(as_float)
+    return number if 0 <= number <= MAX_EPOCH_MS else None
 
 
 def non_negative_number(value: Any) -> Optional[float]:
