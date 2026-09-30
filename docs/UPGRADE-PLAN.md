@@ -1,6 +1,6 @@
 # Upgrade plan — book-crypto-data
 
-Score: 7/10 -> 8/10 — lake tests now run standalone in CI via the pinned `[lake]` extra; remaining gaps are provider-parser fixtures and packaging polish.
+Score: 8/10 -> 8.5/10 — rows with NaN/inf/negative/duplicate values are now rejected before Bronze/CSV, projections are written atomically, and CLI input is validated; remaining gaps are packaging polish.
 
 ## Backlog
 
@@ -11,8 +11,28 @@ Score: 7/10 -> 8/10 — lake tests now run standalone in CI via the pinned `[lak
 - P2: Add a `[project.optional-dependencies] dev` extra and a `[build-system]` table so
   `pip install -e ".[dev]"` is the single documented setup.
 - P2: Decide whether `archive/` is still needed; it is not packaged or tested.
+- P1: Validate the trending payload shape (`coins[].item` keys) instead of raising
+  `KeyError` inside `fetch_trending`; today it is caught as best-effort.
+- P2: Surface the per-run `rejected_by_reason` counts in `/v1/metadata`.
 
-## Done in this pass (pass 2)
+## Done in this pass (pass 3)
+
+- New `quality` module (`finite_number`, `non_negative_number`, `dedupe_by_key`):
+  `lake.price_records_with_report` drops rows with missing/non-numeric/NaN/inf/negative
+  prices and duplicate `coin:currency` ids, blanks bad volume/market cap, and a
+  non-finite 24h change becomes 0; the CSV projection applies the same filter.
+  Rejection counts go to stdout and landing metadata; zero valid rows fail before the lake write.
+- `ohlcv.kline_records` drops malformed/inconsistent bars and repeated open times;
+  `funding_records` drops non-finite rates and repeats (empty pages no longer write).
+- New `fsutil` module: price/trending CSVs are replaced atomically and history is
+  appended via an atomic rewrite.
+- CLI: `--coins`/`--vs-currencies` are lowercased/de-duplicated and must be non-empty;
+  `--alert-threshold` must be finite and >= 0; `ohlcv --days` must be > 0 (exit 2).
+- README: Quick start uses `pip install -e ".[lake]"`; new "Data quality" section.
+- Verified: `pytest -q -rs` 65 passed / 1 skipped (was 50/1) with the `[lake]` venv;
+  `--fixture` smoke run; ruff 0.15.8 and 0.16.9 clean.
+
+## Done in pass 2
 
 - Added a `[lake]` extra pinning `solo-empire-data-lake` at `68fb5a9` (plus pyarrow/duckdb); CI
   installs `-e ".[lake]"`, asserts `data_lake` imports, and lake tests now run instead of skipping.

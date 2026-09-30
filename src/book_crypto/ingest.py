@@ -16,15 +16,15 @@ Usage:
     python -m book_crypto.ingest
     python -m book_crypto.ingest --coins bitcoin,ethereum,solana
     python -m book_crypto.ingest --alert-threshold 3
-    python -m book_crypto.ingest --vs-currency thb,usd
+    python -m book_crypto.ingest --vs-currencies thb,usd
     python -m book_crypto.ingest --data-lake-uri /path/to/data/lake
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import json
+import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +56,8 @@ try:
     from .policy import evaluate_provider, require_provider, require_external_writes, external_writes_allowed
     from .store import seed_fixtures
     from . import lake as _lake
+    from .fsutil import atomic_append_csv, atomic_write_csv
+    from .quality import finite_number, non_negative_number, summarize_rejections
 except ImportError:  # pragma: no cover
     _dp_config = None
     _lake = None
@@ -137,46 +139,60 @@ def _projection_timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def price_rows_for_csv(data: dict, currencies: list) -> list[dict[str, Any]]:
-    """Build CSV projection rows from CoinGecko simple/price payload."""
-    now = _projection_timestamp()
-    rows = []
+def _valid_price_cells(data: dict, currencies: list):
+    """Yield (coin_id, currency, info) for rows whose price passes validation.
+
+    Mirrors ``lake.price_records_with_report`` so the CSV projection never
+    shows a row that Bronze rejected (missing/NaN/inf/negative price, or a
+    duplicate currency).
+    """
     for coin_id, info in data.items():
         if not isinstance(info, dict):
             continue
-        for curr in currencies:
-            rows.append(
-                {
-                    "coin_id": coin_id,
-                    "currency": curr,
-                    "price": info.get(curr, ""),
-                    "change_24h_pct": round(info.get(f"{curr}_24h_change", 0) or 0, 2),
-                    "volume_24h": info.get(f"{curr}_24h_vol", ""),
-                    "market_cap": info.get(f"{curr}_market_cap", ""),
-                    "updated_at": now,
-                }
-            )
-    return rows
+        for curr in dict.fromkeys(currencies):
+            if non_negative_number(info.get(curr)) is None:
+                continue
+            yield coin_id, curr, info
+
+
+def _clean_optional(value: Any) -> Any:
+    return value if non_negative_number(value) is not None else ""
+
+
+def _change_pct(info: dict, curr: str) -> float:
+    return round(finite_number(info.get(f"{curr}_24h_change")) or 0.0, 2)
+
+
+def price_rows_for_csv(data: dict, currencies: list) -> list[dict[str, Any]]:
+    """Build CSV projection rows from CoinGecko simple/price payload."""
+    now = _projection_timestamp()
+    return [
+        {
+            "coin_id": coin_id,
+            "currency": curr,
+            "price": info.get(curr, ""),
+            "change_24h_pct": _change_pct(info, curr),
+            "volume_24h": _clean_optional(info.get(f"{curr}_24h_vol", "")),
+            "market_cap": _clean_optional(info.get(f"{curr}_market_cap", "")),
+            "updated_at": now,
+        }
+        for coin_id, curr, info in _valid_price_cells(data, currencies)
+    ]
 
 
 def history_rows_for_csv(data: dict, currencies: list) -> list[dict[str, Any]]:
     now = _projection_timestamp()
-    rows = []
-    for coin_id, info in data.items():
-        if not isinstance(info, dict):
-            continue
-        for curr in currencies:
-            rows.append(
-                {
-                    "date": now,
-                    "coin_id": coin_id,
-                    "currency": curr,
-                    "price": info.get(curr, ""),
-                    "change_24h_pct": round(info.get(f"{curr}_24h_change", 0) or 0, 2),
-                    "market_cap": info.get(f"{curr}_market_cap", ""),
-                }
-            )
-    return rows
+    return [
+        {
+            "date": now,
+            "coin_id": coin_id,
+            "currency": curr,
+            "price": info.get(curr, ""),
+            "change_24h_pct": _change_pct(info, curr),
+            "market_cap": _clean_optional(info.get(f"{curr}_market_cap", "")),
+        }
+        for coin_id, curr, info in _valid_price_cells(data, currencies)
+    ]
 
 
 def project_prices_csv(data: dict, currencies: list, output_dir: Path) -> Path:
@@ -193,10 +209,7 @@ def project_prices_csv(data: dict, currencies: list, output_dir: Path) -> Path:
         "market_cap",
         "updated_at",
     ]
-    with open(prices_file, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
+    atomic_write_csv(prices_file, fieldnames, rows)
     print(f"  Projected {len(rows)} rows → {prices_file}")
     return prices_file
 
@@ -206,13 +219,8 @@ def project_history_csv(data: dict, currencies: list, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     history_file = output_dir / "crypto_history.csv"
     rows = history_rows_for_csv(data, currencies)
-    file_exists = history_file.exists()
     fieldnames = ["date", "coin_id", "currency", "price", "change_24h_pct", "market_cap"]
-    with open(history_file, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(rows)
+    atomic_append_csv(history_file, fieldnames, rows)
     print(f"  Projected +{len(rows)} history rows → {history_file}")
     return history_file
 
@@ -223,11 +231,7 @@ def project_trending_csv(trending: list, output_dir: Path) -> Path:
     trending_file = output_dir / "crypto_trending.csv"
     now = _projection_timestamp()
     fieldnames = ["date", "id", "name", "symbol", "market_cap_rank", "score"]
-    with open(trending_file, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for coin in trending:
-            writer.writerow({"date": now, **coin})
+    atomic_write_csv(trending_file, fieldnames, ({"date": now, **coin} for coin in trending))
     print(f"  Projected {len(trending)} trending coins → {trending_file}")
     return trending_file
 
@@ -252,8 +256,8 @@ def print_alerts(data: dict, threshold: float, currencies: list):
         if not isinstance(info, dict):
             continue
         for curr in currencies:
-            change = info.get(f"{curr}_24h_change", 0) or 0
-            if abs(change) >= threshold:
+            change = finite_number(info.get(f"{curr}_24h_change"))
+            if change is not None and abs(change) >= threshold:
                 direction = "UP" if change > 0 else "DOWN"
                 price = info.get(curr, "N/A")
                 alerts.append(
@@ -290,13 +294,24 @@ def _lake_ingest_prices(
 ) -> dict[str, Any]:
     if _lake is None or _dp_config is None:
         raise RuntimeError("Lake adapter unavailable in this runtime")
-    records = _lake.price_records_from_api(data, currencies)
+    records, rejected = _lake.price_records_with_report(data, currencies)
+    rejected_by_reason = summarize_rejections(rejected)
+    if rejected:
+        print(f"  Quality: dropped {len(rejected)} price rows {rejected_by_reason}")
+    if not records:
+        raise _lake.LakeIngestError(
+            f"Price payload produced zero valid records (rejected: {rejected_by_reason})"
+        )
     result = _lake.ingest_to_lake(
         raw=raw,
         records=records,
         dataset=_dp_config.LAKE_DATASET_PRICES,
         data_lake_uri=data_lake_uri,
-        metadata={"endpoint": "simple/price", "currencies": currencies},
+        metadata={
+            "endpoint": "simple/price",
+            "currencies": currencies,
+            "rejected_by_reason": rejected_by_reason,
+        },
     )
     _lake.write_lineage(result, dataset=_dp_config.LAKE_DATASET_PRICES, data_dir=output_dir)
     print(
@@ -394,6 +409,12 @@ def run_live_ingest(
     }
 
 
+def _csv_arg(value: str) -> list[str]:
+    """Split a comma-separated CLI value; lowercase, trim and de-duplicate."""
+    items = (part.strip().lower() for part in value.split(","))
+    return list(dict.fromkeys(item for item in items if item))
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Scrape crypto prices via CoinGecko (lake-first; CSV is projection)"
@@ -452,8 +473,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    coins = [c.strip() for c in args.coins.split(",") if c.strip()]
-    currencies = [c.strip() for c in args.vs_currencies.split(",") if c.strip()]
+    coins = _csv_arg(args.coins)
+    currencies = _csv_arg(args.vs_currencies)
+    if not coins:
+        parser.error("--coins must name at least one coin id")
+    if not currencies:
+        parser.error("--vs-currencies must name at least one currency")
+    if not math.isfinite(args.alert_threshold) or args.alert_threshold < 0:
+        parser.error("--alert-threshold must be a finite, non-negative number")
     output_dir = Path(args.output_dir)
 
     if getattr(args, "fixture", False) or getattr(args, "dry_run", False):

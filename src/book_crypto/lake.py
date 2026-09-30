@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from . import config
+from . import quality
 
 
 def _load_shared():
@@ -129,6 +130,70 @@ def is_remote_lake_uri(data_lake_uri: str) -> bool:
     return _pa_mod().is_remote_lake_uri(data_lake_uri)
 
 
+def _coin_event_time(last_updated: Any, received: str) -> str:
+    if last_updated is None:
+        return received
+    try:
+        return (
+            datetime.fromtimestamp(int(last_updated), tz=timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
+    except (TypeError, ValueError, OSError, OverflowError):
+        return received
+
+
+def price_records_with_report(
+    data: dict[str, Any],
+    currencies: list[str],
+    *,
+    event_time: Optional[str] = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Normalize CoinGecko simple/price JSON and report rejected rows.
+
+    A (coin, currency) row is rejected when its price is missing, non-numeric,
+    NaN/inf or negative, or when it repeats an earlier ``id`` (duplicate
+    currency or coin keys). Non-finite or negative volume/market cap are
+    blanked and a non-finite 24h change becomes ``0`` instead of being written.
+    """
+    received = event_time or utc_now_iso()
+    records: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    for coin_id, info in data.items():
+        if not isinstance(info, dict):
+            rejected.append({"id": str(coin_id), "reason": "not_an_object"})
+            continue
+        last_updated = info.get("last_updated_at")
+        coin_event_time = _coin_event_time(last_updated, received)
+
+        for curr in currencies:
+            record_id = f"{coin_id}:{curr}"
+            price = info.get(curr, "")
+            if quality.non_negative_number(price) is None:
+                rejected.append({"id": record_id, "reason": "invalid_price"})
+                continue
+            change = quality.finite_number(info.get(f"{curr}_24h_change")) or 0.0
+            volume = info.get(f"{curr}_24h_vol", "")
+            market_cap = info.get(f"{curr}_market_cap", "")
+            records.append(
+                {
+                    "id": record_id,
+                    "coin_id": coin_id,
+                    "currency": curr,
+                    "price": price,
+                    "change_24h_pct": round(change, 2),
+                    "volume_24h": volume if quality.non_negative_number(volume) is not None else "",
+                    "market_cap": market_cap if quality.non_negative_number(market_cap) is not None else "",
+                    "event_time": coin_event_time,
+                    "last_updated_at": last_updated if last_updated is not None else "",
+                }
+            )
+    records, duplicates = quality.dedupe_by_key(records)
+    rejected.extend({"id": r["id"], "reason": "duplicate_id"} for r in duplicates)
+    return records, rejected
+
+
 def price_records_from_api(
     data: dict[str, Any],
     currencies: list[str],
@@ -136,39 +201,7 @@ def price_records_from_api(
     event_time: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Normalize CoinGecko simple/price JSON into Bronze-ready records."""
-    received = event_time or utc_now_iso()
-    records: list[dict[str, Any]] = []
-    for coin_id, info in data.items():
-        if not isinstance(info, dict):
-            continue
-        last_updated = info.get("last_updated_at")
-        if last_updated is not None:
-            try:
-                coin_event_time = (
-                    datetime.fromtimestamp(int(last_updated), tz=timezone.utc)
-                    .replace(microsecond=0)
-                    .isoformat()
-                    .replace("+00:00", "Z")
-                )
-            except (TypeError, ValueError, OSError, OverflowError):
-                coin_event_time = received
-        else:
-            coin_event_time = received
-
-        for curr in currencies:
-            records.append(
-                {
-                    "id": f"{coin_id}:{curr}",
-                    "coin_id": coin_id,
-                    "currency": curr,
-                    "price": info.get(curr, ""),
-                    "change_24h_pct": round(info.get(f"{curr}_24h_change", 0) or 0, 2),
-                    "volume_24h": info.get(f"{curr}_24h_vol", ""),
-                    "market_cap": info.get(f"{curr}_market_cap", ""),
-                    "event_time": coin_event_time,
-                    "last_updated_at": last_updated if last_updated is not None else "",
-                }
-            )
+    records, _ = price_records_with_report(data, currencies, event_time=event_time)
     return records
 
 
@@ -194,6 +227,7 @@ def trending_records_from_api(
                 "event_time": received,
             }
         )
+    records, _ = quality.dedupe_by_key(records)
     return records
 
 

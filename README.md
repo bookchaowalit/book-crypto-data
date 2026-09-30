@@ -115,8 +115,10 @@ chooses the catalog-backed path.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e .
-# Lake writes need the monorepo data-lake runtime (pyarrow + infra/scripts)
-pip install -r <solo-empire>/infra/requirements-data-lake.txt
+# Lake writes need the shared data-lake runtime: the [lake] extra installs the
+# pinned solo-empire-data-lake (plus pyarrow/duckdb); inside Solo Empire the
+# parent checkout's infra/scripts/data_lake is used instead
+pip install -e ".[lake]"
 python -m book_crypto.ingest --help
 book-crypto-data --help
 ```
@@ -143,6 +145,24 @@ Environment:
 | `DATA_DIR` | Local CSV projection directory (default `./data`) |
 
 On live ingest, lake write failure exits non-zero and **does not** update CSV.
+Invalid arguments (empty `--coins`/`--vs-currencies`, a negative or non-finite
+`--alert-threshold`) exit with status 2; coin and currency lists are
+lowercased and de-duplicated.
+
+### Data quality
+
+Before any Bronze or CSV write (`book_crypto.quality`):
+
+- A price row is dropped when its price is missing, non-numeric, `NaN`/`inf`,
+  or negative, or when its `coin:currency` id repeats; non-finite or negative
+  `volume_24h`/`market_cap` are blanked and a non-finite 24h change becomes `0`.
+  Rejection counts by reason are printed and stored in the landing metadata
+  (`rejected_by_reason`); a batch with zero valid rows fails before the lake write.
+- OHLCV bars with non-finite/negative values, `high`/`low` that do not bound
+  `open`/`close`, or repeated open times are dropped; funding rows need a
+  finite rate and a unique funding time.
+- CSV projections are written atomically (temp file + `os.replace`), so an
+  interrupted run leaves the previous file intact.
 
 Runtime projections stay under repo-local `data/` (plus `data/lake_lineage.json`).
 
