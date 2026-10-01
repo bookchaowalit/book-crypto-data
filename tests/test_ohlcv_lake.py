@@ -1,6 +1,7 @@
 """No-network tests for the Binance public OHLCV/funding lake capture."""
 from __future__ import annotations
 
+import importlib.util
 import json
 import tempfile
 import unittest
@@ -40,7 +41,10 @@ class FakeBinance:
         return json.dumps(rows[: min(self.page_limit, params["limit"])]).encode()
 
 
-@unittest.skipUnless(lake.find_solo_empire_root() is not None, "shared data_lake adapter not found")
+@unittest.skipUnless(
+    lake.shared_runtime_available() and importlib.util.find_spec("pyarrow") is not None,
+    "pyarrow + shared data_lake runtime required (pip install -e .[lake])",
+)
 class OhlcvLakeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="ohlcv-lake-")

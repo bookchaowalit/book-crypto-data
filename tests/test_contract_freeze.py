@@ -6,7 +6,6 @@ Breaking changes require a new schema_version (e.g. crypto.v2).
 """
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -40,7 +39,10 @@ class ContractFreezeTests(unittest.TestCase):
         self.assertFalse(config.ALLOW_EXTERNAL_WRITES)
         self.assertFalse(config.ALLOW_REFRESH)
 
-    @unittest.skipUnless(_shared_runtime_available(), "shared data_lake adapter not found")
+    @unittest.skipUnless(
+        _shared_runtime_available(),
+        "shared data_lake runtime not installed (pip install -e .[lake])",
+    )
     def test_envelope_required_keys(self):
         body = envelope(items=[], data_status="empty")
         for key in ENVELOPE_KEYS:

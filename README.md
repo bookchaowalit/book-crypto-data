@@ -115,8 +115,10 @@ chooses the catalog-backed path.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e .
-# Lake writes need the monorepo data-lake runtime (pyarrow + infra/scripts)
-pip install -r <solo-empire>/infra/requirements-data-lake.txt
+# Lake writes need the shared data-lake runtime: the [lake] extra installs the
+# pinned solo-empire-data-lake (plus pyarrow/duckdb); inside Solo Empire the
+# parent checkout's infra/scripts/data_lake is used instead
+pip install -e ".[lake]"
 python -m book_crypto.ingest --help
 book-crypto-data --help
 ```
@@ -139,10 +141,28 @@ Environment:
 | Variable | Purpose |
 |---|---|
 | `SOLO_EMPIRE_DATA_LAKE_URI` / `DATA_LAKE_URI` | Lake root (`file://...` or path; default monorepo `data/lake`) |
-| `SOLO_EMPIRE_ROOT` | Monorepo root if not discovered by walking parents |
+| `SOLO_EMPIRE_ROOT` | Monorepo root if not discovered by walking parents; also used to locate the shared `data_lake` adapter |
 | `DATA_DIR` | Local CSV projection directory (default `./data`) |
 
 On live ingest, lake write failure exits non-zero and **does not** update CSV.
+Invalid arguments (empty `--coins`/`--vs-currencies`, a negative or non-finite
+`--alert-threshold`) exit with status 2; coin and currency lists are
+lowercased and de-duplicated.
+
+### Data quality
+
+Before any Bronze or CSV write (`book_crypto.quality`):
+
+- A price row is dropped when its price is missing, non-numeric, `NaN`/`inf`,
+  or negative, or when its `coin:currency` id repeats; non-finite or negative
+  `volume_24h`/`market_cap` are blanked and a non-finite 24h change becomes `0`.
+  Rejection counts by reason are printed and stored in the landing metadata
+  (`rejected_by_reason`); a batch with zero valid rows fails before the lake write.
+- OHLCV bars with non-finite/negative values, `high`/`low` that do not bound
+  `open`/`close`, or repeated open times are dropped; funding rows need a
+  finite rate and a unique funding time.
+- CSV projections are written atomically (temp file + `os.replace`), so an
+  interrupted run leaves the previous file intact.
 
 Runtime projections stay under repo-local `data/` (plus `data/lake_lineage.json`).
 
@@ -229,11 +249,19 @@ trigger a paid fallback.
 ## Tests
 
 ```bash
-# From this package (with src on PYTHONPATH / editable install)
-python -m unittest discover -s tests -v
+# What CI runs: the [lake] extra installs the pinned solo-empire-data-lake
+# runtime (plus pyarrow/duckdb), so Bronze/Silver lake tests run standalone
+python -m pip install -e ".[lake]" pytest ruff
+ruff check .
+python -m pytest -q -rs
 
-# Prefer the monorepo venv when verifying real lake writes:
-# /path/to/solo-empire/.venv/bin/python -m unittest discover -s tests -v
+# Contract/policy only: without the extra, lake tests skip with a reason
+python -m pip install -e . pytest
+python -m pytest -q -rs
+
+# Inside Solo Empire: SOLO_EMPIRE_ROOT (or walking parents) makes the parent
+# checkout's infra/scripts/data_lake take precedence over the installed runtime
+SOLO_EMPIRE_ROOT=/path/to/solo-empire python -m pytest -q
 ```
 
 Coverage includes offline fixtures, mocked upstream HTTP, API contract against

@@ -27,12 +27,16 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install -e .
-      # Full Bronze/Silver integration runs from solo-empire, where the shared
-      # data_lake adapter is available. This public repo CI owns standalone
-      # contract, policy, and compile checks; lake tests skip transparently
-      # when the private monorepo runtime is not present.
-      - run: python -m unittest discover -s tests -v
+      - name: Install package with the pinned shared lake runtime
+        run: python -m pip install -e ".[lake]" pytest ruff
+      - name: Check shared lake runtime is importable
+        run: python -c "import data_lake.product_adapter, data_lake.silver"
+      - name: Lint
+        run: ruff check .
+      # The [lake] extra installs solo-empire-data-lake, so Bronze/Silver lake
+      # tests run here instead of skipping; -rs keeps any remaining skips visible.
+      - name: Tests (standalone, including lake integration)
+        run: python -m pytest -q -rs
       - run: python -m compileall -q src
       - run: python -m book_crypto.ingest --help
       - run: book-crypto-data --help

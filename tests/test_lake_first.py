@@ -49,7 +49,10 @@ def _monorepo_lake_root(start=None):
         return None
 
 
-@unittest.skipUnless(_monorepo_lake_root() is not None, "shared data_lake adapter not found")
+@unittest.skipUnless(
+    lake.shared_runtime_available(),
+    "shared data_lake runtime not installed (pip install -e .[lake])",
+)
 class NormalizeTests(unittest.TestCase):
     def test_price_records_include_id_and_event_time(self):
         records = lake.price_records_from_api(SAMPLE_API, ["usd", "thb"])
@@ -68,7 +71,10 @@ class NormalizeTests(unittest.TestCase):
         self.assertIn("updated_at", rows[0])
 
 
-@unittest.skipUnless(_monorepo_lake_root() is not None, "shared data_lake adapter not found")
+@unittest.skipUnless(
+    lake.shared_runtime_available(),
+    "shared data_lake runtime not installed (pip install -e .[lake])",
+)
 class LakeFirstOrderingTests(unittest.TestCase):
     def test_csv_not_written_when_lake_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,8 +153,8 @@ class LakeFirstOrderingTests(unittest.TestCase):
 
 
 @unittest.skipUnless(
-    _monorepo_lake_root() is not None,
-    "Solo Empire monorepo with data_lake not found",
+    lake.shared_runtime_available(),
+    "shared data_lake runtime not installed (pip install -e .[lake])",
 )
 class RealLakeIngestTests(unittest.TestCase):
     def test_ingest_payload_writes_landing_bronze_manifest(self):

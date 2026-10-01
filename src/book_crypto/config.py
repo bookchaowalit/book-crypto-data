@@ -35,10 +35,20 @@ LAKE_LINEAGE_PATH = DATA_DIR / LINEAGE_FILE
 
 
 def env_bool(name: str, default: bool) -> bool:
+    """Parse a boolean env var; blank or unrecognised values keep ``default``.
+
+    Treating everything but "true"-ish as False made ``FREE_ONLY=`` (an empty
+    line in .env or compose) or a typo silently disable the free-only guard.
+    """
     raw = os.environ.get(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 FREE_ONLY = env_bool("FREE_ONLY", True)

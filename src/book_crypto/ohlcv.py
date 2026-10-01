@@ -30,6 +30,7 @@ from typing import Any, Callable, Optional
 from . import config
 from . import lake as _lake
 from .policy import require_provider
+from .quality import epoch_ms, finite_number, non_negative_number
 
 PROVIDER = "binance_public_market_data"
 MARKETS = {
@@ -95,6 +96,25 @@ def http_fetch(url: str, params: dict[str, Any]) -> bytes:
     raise RuntimeError(f"Binance public request failed: {last_error}")
 
 
+def valid_kline(row: list[Any]) -> bool:
+    """True when a kline row has finite, non-negative, self-consistent values.
+
+    Rejects NaN/inf/negative prices or volumes, ``high < max(open, close, low)``,
+    ``low > min(open, close)``, a non-integer trade count, and close <= open time.
+    """
+    if not isinstance(row, (list, tuple)) or len(row) < 9:
+        return False
+    open_ms, close_ms, trades = epoch_ms(row[0]), epoch_ms(row[6]), epoch_ms(row[8])
+    if open_ms is None or close_ms is None or trades is None:
+        return False
+    prices = [non_negative_number(row[i]) for i in (1, 2, 3, 4)]
+    volumes = [non_negative_number(row[i]) for i in (5, 7)]
+    if any(v is None for v in prices + volumes) or trades < 0 or close_ms <= open_ms:
+        return False
+    open_, high, low, close = prices
+    return high >= max(open_, close, low) and low <= min(open_, close)
+
+
 def kline_records(
     payload: list[list[Any]],
     *,
@@ -103,12 +123,21 @@ def kline_records(
     interval: str,
     now_ms: int,
 ) -> list[dict[str, Any]]:
-    """Normalize a klines payload into Bronze records, keeping closed bars only."""
+    """Normalize a klines payload into Bronze records, keeping closed bars only.
+
+    Malformed bars (see ``valid_kline``) and repeated open times are dropped.
+    """
     records = []
+    seen: set[int] = set()
     for row in payload:
-        open_ms, close_ms = int(row[0]), int(row[6])
+        if not valid_kline(row):
+            continue
+        open_ms, close_ms = epoch_ms(row[0]), epoch_ms(row[6])  # non-None: valid_kline
         if close_ms >= now_ms:
             continue  # bar still forming
+        if open_ms in seen:
+            continue
+        seen.add(open_ms)
         records.append(
             {
                 "id": f"{venue}:{symbol}:{interval}:{open_ms}",
@@ -123,7 +152,7 @@ def kline_records(
                 "close": str(row[4]),
                 "volume": str(row[5]),
                 "quote_volume": str(row[7]),
-                "trades": int(row[8]),
+                "trades": epoch_ms(row[8]),
                 "event_time": iso_utc(open_ms),
             }
         )
@@ -131,9 +160,16 @@ def kline_records(
 
 
 def funding_records(payload: list[dict[str, Any]], *, symbol: str) -> list[dict[str, Any]]:
+    """Normalize funding rows; drop non-finite rates and repeated funding times."""
     records = []
+    seen: set[int] = set()
     for row in payload:
-        t = int(row["fundingTime"])
+        t = epoch_ms(row.get("fundingTime")) if isinstance(row, dict) else None
+        if t is None:
+            continue
+        if t in seen or finite_number(row.get("fundingRate")) is None:
+            continue
+        seen.add(t)
         records.append(
             {
                 "id": f"binance_futures:{symbol}:funding:{t}",
@@ -242,8 +278,9 @@ def capture_funding(
         if not payload:
             break
         records = funding_records(payload, symbol=symbol)
-        _ingest(raw, records, config.LAKE_DATASET_FUNDING, data_lake_uri, {"symbol": symbol})
-        written += len(records)
+        if records:
+            _ingest(raw, records, config.LAKE_DATASET_FUNDING, data_lake_uri, {"symbol": symbol})
+            written += len(records)
         if len(payload) < FUNDING_PAGE_LIMIT:
             break
         cursor = int(payload[-1]["fundingTime"]) + 1
@@ -306,6 +343,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--data-lake-uri", default="")
     ap.add_argument("--json", action="store_true", dest="as_json")
     args = ap.parse_args(argv)
+    if args.days <= 0:
+        ap.error("--days must be a positive number of days")
     try:
         result = run_capture(
             args.symbols.split(","),

@@ -5,9 +5,23 @@ description = "Crypto market data ingestion and CLI from CoinGecko."
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.27"]
 
+[project.optional-dependencies]
+# Shared lake-first runtime (landing, Bronze Parquet, Silver, DuckDB reads).
+# Pinned to an exact commit so CI runs the lake tests reproducibly.
+lake = [
+  "duckdb>=1.1.0,<2.0.0",
+  "pyarrow>=14.0.0,<24.0.0",
+  "solo-empire-data-lake[lake] @ https://github.com/bookchaowalit/solo-empire-data-lake/archive/4c24c667e1ebafee163705b1c8b9b9f8c83e3185.tar.gz",
+]
+
 [project.scripts]
 book-crypto-data = "book_crypto.ingest:main"
 book-crypto-data-api = "book_crypto.api:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.ruff.lint]
+# Pin the classic default rule set explicitly so newer ruff releases (0.16+
+# widened the defaults) do not change what CI enforces.
+select = ["E4", "E7", "E9", "F"]
