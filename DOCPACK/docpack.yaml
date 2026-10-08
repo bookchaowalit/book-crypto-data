@@ -1,0 +1,8 @@
+system_id: bookchaowalit/book-products/book-crypto-data
+prefix: CARD
+brand: "BOOK CRYPTO DATA"
+subtitle: "ข้อมูลราคาคริปโตแบบ lake-first จาก API สาธารณะฟรี พร้อม API อ่านอย่างเดียว"
+footer: "Book Crypto Data — Product Card"
+color: "#2f4b6e"
+audience: internal
+tier: L0
