@@ -20,20 +20,28 @@ from . import quality
 
 
 def _load_shared():
-    """Import shared product_adapter from monorepo infra/scripts."""
-    # Prefer walking to monorepo root the same way product_adapter does.
-    cur = config.PROJECT_ROOT.resolve()
-    candidates = [cur, *cur.parents]
-    if config.SOLO_EMPIRE_ROOT:
-        # Explicit parent checkout (e.g. sibling clone) wins over the walk.
-        candidates.insert(0, Path(config.SOLO_EMPIRE_ROOT).expanduser().resolve())
-    for parent in candidates:
-        scripts = parent / "infra" / "scripts"
-        if (scripts / "data_lake" / "product_adapter.py").is_file():
-            if str(scripts) not in sys.path:
-                sys.path.insert(0, str(scripts))
-            break
-    from data_lake import product_adapter as pa  # type: ignore
+    """Import the shared product adapter.
+
+    Uses the installed ``solo-empire-data-lake`` package (the ``[lake]`` extra).
+    Falls back to a solo-data-lake checkout named by ``SOLO_DATA_LAKE_ROOT``.
+    """
+    if importlib.util.find_spec("data_lake") is None and config.SOLO_DATA_LAKE_ROOT:
+        scripts = Path(config.SOLO_DATA_LAKE_ROOT).expanduser().resolve() / "infra" / "scripts"
+        if not (scripts / "data_lake" / "product_adapter.py").is_file():
+            raise ImportError(
+                f"SOLO_DATA_LAKE_ROOT={config.SOLO_DATA_LAKE_ROOT} has no "
+                "infra/scripts/data_lake/product_adapter.py"
+            )
+        if str(scripts) not in sys.path:
+            sys.path.insert(0, str(scripts))
+    try:
+        from data_lake import product_adapter as pa  # type: ignore
+    except ImportError as exc:
+        raise ImportError(
+            "shared data_lake runtime not found: install the [lake] extra "
+            "(pip install -e .[lake]) or set SOLO_DATA_LAKE_ROOT to a "
+            "solo-data-lake checkout"
+        ) from exc
     return pa
 
 
@@ -75,7 +83,6 @@ def _contract():
         bronze_schema_version=config.LAKE_BRONZE_SCHEMA_VERSION,
         project_root=config.PROJECT_ROOT,
         data_lake_uri=config.DATA_LAKE_URI,
-        solo_empire_root=config.SOLO_EMPIRE_ROOT,
         lineage_filename=config.LINEAGE_FILE,
         datasets=(
             config.LAKE_DATASET_PRICES,
@@ -90,23 +97,11 @@ def utc_now_iso() -> str:
     return _pa_mod().utc_now_iso()
 
 
-def find_solo_empire_root(start: Optional[Path] = None) -> Optional[Path]:
-    """Return the Solo Empire root, or ``None`` when the shared adapter is absent."""
-    try:
-        pa = _pa_mod()
-    except ImportError:
-        return None
-    return pa.find_solo_empire_root(
-        start or config.PROJECT_ROOT,
-        solo_empire_root=config.SOLO_EMPIRE_ROOT,
-    )
-
-
 def shared_runtime_available() -> bool:
     """Return True when the shared ``data_lake`` runtime can be imported.
 
     Covers the installed ``[lake]`` extra (``solo-empire-data-lake``) and the
-    ``SOLO_EMPIRE_ROOT`` / parent-checkout fallback used inside Solo Empire.
+    ``SOLO_DATA_LAKE_ROOT`` sibling-checkout fallback.
     """
     if importlib.util.find_spec("data_lake") is not None:
         return True
@@ -122,7 +117,6 @@ def default_data_lake_uri(solo_root: Optional[Path] = None) -> str:
     return _pa_mod().default_data_lake_uri(
         data_lake_uri=config.DATA_LAKE_URI,
         project_root=config.PROJECT_ROOT,
-        solo_empire_root=config.SOLO_EMPIRE_ROOT,
     )
 
 

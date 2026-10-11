@@ -42,13 +42,6 @@ SAMPLE_API = {
 }
 
 
-def _monorepo_lake_root(start=None):
-    try:
-        return lake.find_solo_empire_root(start)
-    except (ImportError, ModuleNotFoundError):
-        return None
-
-
 @unittest.skipUnless(
     lake.shared_runtime_available(),
     "shared data_lake runtime not installed (pip install -e .[lake])",
@@ -197,14 +190,6 @@ class RealLakeIngestTests(unittest.TestCase):
             lineage = json.loads(lineage_path.read_text(encoding="utf-8"))
             self.assertEqual(lineage["source"], config.LAKE_SOURCE)
             self.assertIn(config.LAKE_DATASET_PRICES, lineage["datasets"])
-
-
-class PathDiscoveryTests(unittest.TestCase):
-    def test_find_solo_empire_from_package(self):
-        root = _monorepo_lake_root(config.PROJECT_ROOT)
-        if root is None:
-            self.skipTest("not nested under solo-empire")
-        self.assertTrue((root / "infra" / "scripts" / "data_lake" / "ingest.py").is_file())
 
 
 if __name__ == "__main__":

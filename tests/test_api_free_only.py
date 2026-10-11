@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import threading
 import unittest
@@ -75,11 +74,7 @@ def _set_silver_mode(mode: str):
 
 
 def _write_crypto_silver(lake_uri: str):
-    root = lake.find_solo_empire_root()
-    if root is not None:  # parent checkout fallback; else the installed [lake] extra
-        scripts = root / "infra" / "scripts"
-        if str(scripts) not in sys.path:
-            sys.path.insert(0, str(scripts))
+    lake._pa_mod()  # puts the shared runtime on sys.path (installed extra or SOLO_DATA_LAKE_ROOT)
     from data_lake.silver import SilverProductContract, transform_bronze_to_silver
 
     contract = SilverProductContract(
