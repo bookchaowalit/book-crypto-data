@@ -141,7 +141,7 @@ Environment:
 | Variable | Purpose |
 |---|---|
 | `SOLO_EMPIRE_DATA_LAKE_URI` / `DATA_LAKE_URI` | Lake root (`file://...` or path; default monorepo `data/lake`) |
-| `SOLO_DATA_LAKE_ROOT` | solo-data-lake checkout used to locate the shared `data_lake` adapter when the `[lake]` extra is not installed |
+| `SOLO_DATA_LAKE_ROOT` | data-lake checkout used to locate the shared `data_lake` adapter when the `[lake]` extra is not installed |
 | `DATA_DIR` | Local CSV projection directory (default `./data`) |
 
 On live ingest, lake write failure exits non-zero and **does not** update CSV.
@@ -259,7 +259,7 @@ python -m pytest -q -rs
 python -m pip install -e . pytest
 python -m pytest -q -rs
 
-# Without the [lake] extra: SOLO_DATA_LAKE_ROOT points at a solo-data-lake
+# Without the [lake] extra: SOLO_DATA_LAKE_ROOT points at a data-lake
 # checkout whose infra/scripts/data_lake supplies the shared runtime
 SOLO_DATA_LAKE_ROOT=/path/to/solo-data-lake python -m pytest -q
 ```

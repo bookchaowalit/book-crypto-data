@@ -23,7 +23,7 @@ def _load_shared():
     """Import the shared product adapter.
 
     Uses the installed ``solo-empire-data-lake`` package (the ``[lake]`` extra).
-    Falls back to a solo-data-lake checkout named by ``SOLO_DATA_LAKE_ROOT``.
+    Falls back to a data-lake checkout named by ``SOLO_DATA_LAKE_ROOT``.
     """
     if importlib.util.find_spec("data_lake") is None and config.SOLO_DATA_LAKE_ROOT:
         scripts = Path(config.SOLO_DATA_LAKE_ROOT).expanduser().resolve() / "infra" / "scripts"
@@ -40,7 +40,7 @@ def _load_shared():
         raise ImportError(
             "shared data_lake runtime not found: install the [lake] extra "
             "(pip install -e .[lake]) or set SOLO_DATA_LAKE_ROOT to a "
-            "solo-data-lake checkout"
+            "data-lake checkout"
         ) from exc
     return pa
 
